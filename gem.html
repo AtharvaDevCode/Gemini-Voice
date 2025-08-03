@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Voice Q&A Prototype</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+
+        :root {
+            --background-color: #1a1a1a;
+            --surface-color: #2c2c2c;
+            --primary-color: #8a63d2;
+            --text-color: #f0f0f0;
+            --label-color: #a0a0a0;
+            --border-color: #444;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align to top */
+            min-height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background-color: var(--surface-color);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+        }
+
+        h1 {
+            margin: 0;
+            color: var(--primary-color);
+            font-weight: 700;
+            font-size: 24px;
+        }
+
+        #listenBtn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #listenBtn:hover {
+            background-color: #7654b8;
+        }
+        
+        #listenBtn:active {
+            transform: scale(0.98);
+        }
+
+        #listenBtn.listening {
+            background-color: #c94040;
+        }
+        
+        #listenBtn.listening:hover {
+            background-color: #a53434;
+        }
+        
+        .api-key-container {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        #apiKey {
+            width: 100%;
+            padding: 10px;
+            background-color: var(--background-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-color);
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        #status {
+            color: var(--label-color);
+            min-height: 20px;
+            text-align: center;
+            width: 100%;
+        }
+
+        .output-grid-secondary {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .output-box {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        label {
+            font-weight: 500;
+            color: var(--label-color);
+        }
+
+        textarea {
+            width: 100%;
+            background-color: var(--background-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 12px;
+            color: var(--text-color);
+            font-size: 15px;
+            line-height: 1.6;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(138, 99, 210, 0.3);
+        }
+        
+        /* Specific heights for textareas */
+        #answer {
+            min-height: 250px; /* Larger for the main answer */
+            font-size: 16px;
+        }
+        #transcription, #question {
+            min-height: 100px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h1>Voice Q&A</h1>
+            <button id="listenBtn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+                <span>Listen</span>
+            </button>
+        </div>
+
+        <div class="output-box">
+            <label for="answer">Gemini's Answer</label>
+            <textarea id="answer" readonly></textarea>
+        </div>
+
+        <div class="output-grid-secondary">
+            <div class="output-box">
+                <label for="transcription">Live Transcription</label>
+                <textarea id="transcription" readonly></textarea>
+            </div>
+            <div class="output-box">
+                <label for="question">Identified Question</label>
+                <textarea id="question" readonly></textarea>
+            </div>
+        </div>
+
+        <div class="api-key-container">
+            <label for="apiKey">Your Google AI API Key</label>
+            <input type="password" id="apiKey" placeholder="Enter your Gemini API Key here">
+        </div>
+        <p id="status">Status: Ready</p>
+    </div>
+
+    <script>
+        // DOM Elements
+        const listenBtn = document.getElementById('listenBtn');
+        const statusEl = document.getElementById('status');
+        const transcriptionEl = document.getElementById('transcription');
+        const questionEl = document.getElementById('question');
+        const answerEl = document.getElementById('answer');
+        const apiKeyInput = document.getElementById('apiKey');
+
+        // Check for browser support for Web Speech API
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition;
+
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+
+            let final_transcript = '';
+
+            recognition.onstart = () => {
+                isListening = true;
+                listenBtn.classList.add('listening');
+                listenBtn.querySelector('span').textContent = 'Stop';
+                statusEl.textContent = 'Status: Listening...';
+                final_transcript = '';
+                transcriptionEl.value = '';
+                questionEl.value = '';
+                answerEl.value = '';
+            };
+
+            recognition.onresult = (event) => {
+                let interim_transcript = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        final_transcript += event.results[i][0].transcript;
+                    } else {
+                        interim_transcript += event.results[i][0].transcript;
+                    }
+                }
+                transcriptionEl.value = final_transcript + interim_transcript;
+            };
+
+            recognition.onerror = (event) => {
+                statusEl.textContent = 'Status: Error - ' + event.error;
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                listenBtn.classList.remove('listening');
+                listenBtn.querySelector('span').textContent = 'Listen';
+                statusEl.textContent = 'Status: Processing...';
+                
+                if(final_transcript.trim()){
+                    processTextWithGemini(final_transcript);
+                } else {
+                    statusEl.textContent = 'Status: No speech detected. Ready.';
+                }
+            };
+
+        } else {
+            statusEl.textContent = "Status: Error - Speech recognition not supported in this browser.";
+            listenBtn.disabled = true;
+        }
+
+        let isListening = false;
+
+        listenBtn.addEventListener('click', () => {
+            if (isListening) {
+                recognition.stop();
+            } else {
+                recognition.start();
+            }
+        });
+
+        async function processTextWithGemini(transcribedText) {
+            const apiKey = apiKeyInput.value;
+            if (!apiKey) {
+                alert('Please enter your Google AI API Key.');
+                statusEl.textContent = 'Status: Ready';
+                return;
+            }
+
+            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+            // New, more precise prompt
+            const prompt = `Your primary task is to act as an intelligent technical interview assistant. Analyze the text below, which may be a flawed transcription of a spoken question.
+
+**Core Instructions:**
+1.  **Infer Intent:** First, infer the user's intended technical question, correcting any transcription errors. Assume the user is asking about a computer science topic. For example, if the text is "what is 3 way shake in turkey?", you should correctly interpret it as "What is 3-way handshake in TCP?".
+2.  **Answer the Question:** Answer the corrected question based on the persona and rules below.
+
+**Output Formatting (Strict):**
+1.  **Line 1:** Write the corrected, intended technical question you identified.
+2.  **Line 2:** Start a new paragraph for your main answer.
+3.  **After the main answer:** Add a blank line, then write "Key Points:", and then on subsequent lines, provide 2-4 key points using a hyphen (-) for each bullet point.
+4.  **No Question Case:** If no clear technical question can be inferred, your entire response must be the single phrase: 'No question found.'
+
+**Answering Persona:**
+You are a technical expert providing a clear, concise, and technically precise answer.
+
+**Rules for the Main Answer (the paragraph):**
+-   **Tone:** Technically clean and direct. Sentences must be short and crisp.
+-   **Conciseness:** The 3-4 sentence answer must stay on point. Do not include historical context or roundabout information.
+-   **Depth:** Cover the core of the concept accurately.
+
+**Rules for the "Key Points":**
+-   List only the most critical concepts as short, impactful phrases or very short sentences.
+
+**Text to Analyze:**
+---
+${transcribedText}`;
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [{ text: prompt }]
+                        }]
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API request failed with status ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                if (data.candidates && data.candidates.length > 0) {
+                    const resultText = data.candidates[0].content.parts[0].text;
+                    
+                    const lines = resultText.split(/\r?\n/).filter(line => line.trim() !== '');
+
+                    if (lines[0].toLowerCase().includes("no question found")) {
+                        questionEl.value = "No question found.";
+                        answerEl.value = "";
+                    } else {
+                        questionEl.value = lines[0];
+                        answerEl.value = lines.length > 1 ? lines.slice(1).join('\n') : "No answer provided.";
+                    }
+                } else {
+                     questionEl.value = "Error: Invalid response from API.";
+                }
+
+            } catch (error) {
+                questionEl.value = `Error: ${error.message}`;
+            } finally {
+                statusEl.textContent = 'Status: Ready';
+            }
+        }
+    </script>
+</body>
+</html>
