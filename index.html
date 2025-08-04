@@ -123,6 +123,31 @@
             flex-direction: column;
             gap: 0.5rem;
         }
+        
+        .question-box {
+            position: relative;
+        }
+
+        #requeryBtn {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #requeryBtn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
 
         label {
             font-weight: 500;
@@ -148,13 +173,16 @@
             box-shadow: 0 0 0 2px rgba(138, 99, 210, 0.3);
         }
         
-        /* Specific heights for textareas */
+        /* Specific styles for textareas */
         #answer {
-            min-height: 250px; /* Larger for the main answer */
             font-size: 16px;
+            overflow-y: hidden; /* Hide scrollbar during resize */
         }
         #transcription, #question {
             min-height: 100px;
+        }
+        #question {
+            padding-right: 45px; /* Make space for the button */
         }
 
     </style>
@@ -172,7 +200,7 @@
 
         <div class="output-box">
             <label for="answer">Gemini's Answer</label>
-            <textarea id="answer" readonly></textarea>
+            <textarea id="answer" readonly rows="1"></textarea>
         </div>
 
         <div class="output-grid-secondary">
@@ -180,9 +208,12 @@
                 <label for="transcription">Live Transcription</label>
                 <textarea id="transcription" readonly></textarea>
             </div>
-            <div class="output-box">
+            <div class="output-box question-box">
                 <label for="question">Identified Question</label>
-                <textarea id="question" readonly></textarea>
+                <textarea id="question"></textarea>
+                <button id="requeryBtn" title="Get new answer for edited question">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-9 9 .986.986 0 0 1-1.465-.962A9 9 0 0 1 21 12zM3 12a9 9 0 0 1 9-9c2.63 0 5.05.98 6.9 2.6L12 12z"/></svg>
+                </button>
             </div>
         </div>
 
@@ -196,6 +227,7 @@
     <script>
         // DOM Elements
         const listenBtn = document.getElementById('listenBtn');
+        const requeryBtn = document.getElementById('requeryBtn');
         const statusEl = document.getElementById('status');
         const transcriptionEl = document.getElementById('transcription');
         const questionEl = document.getElementById('question');
@@ -223,6 +255,7 @@
                 transcriptionEl.value = '';
                 questionEl.value = '';
                 answerEl.value = '';
+                autoResizeTextarea(answerEl); // Reset height
             };
 
             recognition.onresult = (event) => {
@@ -245,10 +278,10 @@
                 isListening = false;
                 listenBtn.classList.remove('listening');
                 listenBtn.querySelector('span').textContent = 'Listen';
-                statusEl.textContent = 'Status: Processing...';
                 
                 if(final_transcript.trim()){
-                    processTextWithGemini(final_transcript);
+                    statusEl.textContent = 'Status: Identifying question...';
+                    processTextWithGemini(final_transcript, false); // false = this is a transcript, not a direct question
                 } else {
                     statusEl.textContent = 'Status: No speech detected. Ready.';
                 }
@@ -269,7 +302,24 @@
             }
         });
 
-        async function processTextWithGemini(transcribedText) {
+        requeryBtn.addEventListener('click', () => {
+            const editedQuestion = questionEl.value.trim();
+            if (editedQuestion) {
+                statusEl.textContent = 'Status: Getting new answer...';
+                // true = this is a direct question, not a transcript
+                processTextWithGemini(editedQuestion, true); 
+            } else {
+                alert('Please enter a question in the "Identified Question" box before re-querying.');
+            }
+        });
+
+        // Helper function to auto-resize a textarea
+        function autoResizeTextarea(element) {
+            element.style.height = 'auto';
+            element.style.height = (element.scrollHeight) + 'px';
+        }
+
+        async function processTextWithGemini(textToProcess, isDirectQuestion) {
             const apiKey = apiKeyInput.value;
             if (!apiKey) {
                 alert('Please enter your Google AI API Key.');
@@ -278,24 +328,29 @@
             }
 
             const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+            
+            // Dynamically create the prompt based on the workflow
+            let instruction_prompt;
+            if (isDirectQuestion) {
+                // Simpler prompt for when the question is already known
+                instruction_prompt = `Answer the following technical question.`;
+            } else {
+                // Complex prompt for inferring the question from a transcript
+                instruction_prompt = `Your primary task is to act as an intelligent technical interview assistant. Analyze the text below, which may be a flawed transcription of a spoken question. First, infer the user's intended technical question, correcting any transcription errors. Assume the user is asking about a computer science topic. For example, if the text is "what is 3 way shake in turkey?", you should correctly interpret it as "What is 3-way handshake in TCP?". Then, answer the corrected question.`;
+            }
 
-            // New, more precise prompt
-            const prompt = `Your primary task is to act as an intelligent technical interview assistant. Analyze the text below, which may be a flawed transcription of a spoken question.
-
-**Core Instructions:**
-1.  **Infer Intent:** First, infer the user's intended technical question, correcting any transcription errors. Assume the user is asking about a computer science topic. For example, if the text is "what is 3 way shake in turkey?", you should correctly interpret it as "What is 3-way handshake in TCP?".
-2.  **Answer the Question:** Answer the corrected question based on the persona and rules below.
+            const prompt = `${instruction_prompt}
 
 **Output Formatting (Strict):**
 1.  **Line 1:** Write the corrected, intended technical question you identified.
-2.  **Line 2:** Start a new paragraph for your main answer.
-3.  **After the main answer:** Add a blank line, then write "Key Points:", and then on subsequent lines, provide 2-4 key points using a hyphen (-) for each bullet point.
+2.  **Main Answer (starts on line 2):** Write your main answer immediately after the question. **IMPORTANT:** You must format this answer by putting each sentence on its own separate line. Do not group sentences into a single paragraph.
+3.  **Key Points:** After the main answer, add a blank line, then write "Key Points:", and then on subsequent lines, provide 2-4 key points using a hyphen (-) for each bullet point.
 4.  **No Question Case:** If no clear technical question can be inferred, your entire response must be the single phrase: 'No question found.'
 
 **Answering Persona:**
 You are a technical expert providing a clear, concise, and technically precise answer.
 
-**Rules for the Main Answer (the paragraph):**
+**Rules for the Main Answer:**
 -   **Tone:** Technically clean and direct. Sentences must be short and crisp.
 -   **Conciseness:** The 3-4 sentence answer must stay on point. Do not include historical context or roundabout information.
 -   **Depth:** Cover the core of the concept accurately.
@@ -305,19 +360,13 @@ You are a technical expert providing a clear, concise, and technically precise a
 
 **Text to Analyze:**
 ---
-${transcribedText}`;
+${textToProcess}`;
 
             try {
                 const response = await fetch(API_URL, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        contents: [{
-                            parts: [{ text: prompt }]
-                        }]
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
                 });
 
                 if (!response.ok) {
@@ -328,10 +377,9 @@ ${transcribedText}`;
                 
                 if (data.candidates && data.candidates.length > 0) {
                     const resultText = data.candidates[0].content.parts[0].text;
-                    
                     const lines = resultText.split(/\r?\n/).filter(line => line.trim() !== '');
 
-                    if (lines[0].toLowerCase().includes("no question found")) {
+                    if (lines.length === 0 || lines[0].toLowerCase().includes("no question found")) {
                         questionEl.value = "No question found.";
                         answerEl.value = "";
                     } else {
@@ -340,12 +388,14 @@ ${transcribedText}`;
                     }
                 } else {
                      questionEl.value = "Error: Invalid response from API.";
+                     answerEl.value = "";
                 }
 
             } catch (error) {
-                questionEl.value = `Error: ${error.message}`;
+                answerEl.value = `Error: ${error.message}`;
             } finally {
                 statusEl.textContent = 'Status: Ready';
+                autoResizeTextarea(answerEl); // Resize after content is set
             }
         }
     </script>
