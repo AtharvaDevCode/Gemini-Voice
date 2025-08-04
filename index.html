@@ -282,23 +282,22 @@
                 autoResizeTextarea(answerEl); // Reset height
             };
 
-            // *** BUG FIX IS HERE ***
+            // *** NEW ROBUST BUG FIX IS HERE ***
             recognition.onresult = (event) => {
-                let interim_transcript = '';
-                // Rebuild the final transcript from the results array each time.
-                let current_final = '';
-                for (let i = 0; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        current_final += event.results[i][0].transcript;
-                    } else {
-                        // The last item in the results array is the current interim transcript.
-                        interim_transcript = event.results[i][0].transcript;
-                    }
+                // Create the transcript from the event results
+                const transcript = Array.from(event.results)
+                    .map(result => result[0])
+                    .map(result => result.transcript)
+                    .join('');
+                
+                // Update the textarea with the latest transcript
+                transcriptionEl.value = transcript;
+
+                // Check for the final result and update the final_transcript variable
+                // This is needed for the 'onend' event to process the correct text
+                if (event.results[event.results.length - 1].isFinal) {
+                    final_transcript = transcript;
                 }
-                // Update the global final transcript for use in the 'onend' event.
-                final_transcript = current_final;
-                // Update the UI with the combination of final and the latest interim transcript.
-                transcriptionEl.value = current_final + interim_transcript;
             };
 
             recognition.onerror = (event) => {
@@ -314,7 +313,14 @@
                     statusEl.textContent = 'Status: Identifying question...';
                     processTextWithGemini(final_transcript, false); // false = this is a transcript, not a direct question
                 } else {
-                    statusEl.textContent = 'Status: No speech detected. Ready.';
+                    // This handles cases where the user stops listening before a final result is determined
+                    const lastAttempt = transcriptionEl.value.trim();
+                    if (lastAttempt) {
+                         statusEl.textContent = 'Status: Identifying question...';
+                         processTextWithGemini(lastAttempt, false);
+                    } else {
+                        statusEl.textContent = 'Status: No speech detected. Ready.';
+                    }
                 }
             };
 
