@@ -282,16 +282,23 @@
                 autoResizeTextarea(answerEl); // Reset height
             };
 
+            // *** BUG FIX IS HERE ***
             recognition.onresult = (event) => {
                 let interim_transcript = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                // Rebuild the final transcript from the results array each time.
+                let current_final = '';
+                for (let i = 0; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {
-                        final_transcript += event.results[i][0].transcript;
+                        current_final += event.results[i][0].transcript;
                     } else {
-                        interim_transcript += event.results[i][0].transcript;
+                        // The last item in the results array is the current interim transcript.
+                        interim_transcript = event.results[i][0].transcript;
                     }
                 }
-                transcriptionEl.value = final_transcript + interim_transcript;
+                // Update the global final transcript for use in the 'onend' event.
+                final_transcript = current_final;
+                // Update the UI with the combination of final and the latest interim transcript.
+                transcriptionEl.value = current_final + interim_transcript;
             };
 
             recognition.onerror = (event) => {
